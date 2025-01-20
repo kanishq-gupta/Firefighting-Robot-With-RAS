@@ -1,7 +1,9 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
+#include <TinyGPS++.h>
 
-SoftwareSerial SIM7670Serial(2, 3); // RX, TX
+SoftwareSerial SIM7670Serial(2, 3); // RX, TX for SIM Module
+SoftwareSerial gpsSerial(4, 5);     // RX, TX for GPS Module
 
 const int buzzerPin = 11;           // Define the buzzer pin
 const int flame_sensor_pin = 9;     // Fire sensor connected to pin 9
@@ -9,18 +11,26 @@ const int led_pin = 2;              // LED pin remains unchanged at pin 2
 
 int flame_pin = HIGH;               // State of the sensor
 
+TinyGPSPlus gps;                    // Create an instance of the GPS object
+
 void setup() {
   Serial.begin(9600);               // Initialize serial communication
   pinMode(buzzerPin, OUTPUT);       // Set buzzer pin as output
   pinMode(led_pin, OUTPUT);         // Set LED pin as output
   pinMode(flame_sensor_pin, INPUT);// Set flame sensor pin as input
+  
   SIM7670Serial.begin(115200);      // Initialize SoftwareSerial for SIM module
+  gpsSerial.begin(9600);            // Initialize SoftwareSerial for GPS module
+  
   sendATCommand("AT", "OK", 1000);  // Check communication with SIM module
   sendATCommand("AT+CMGF=1", "OK", 1000); // Set SMS format to text
 }
 
 void loop() {
   checkFlame();                     // Check flame sensor
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());   // Encode GPS data
+  }
   delay(100);
 }
 
@@ -56,7 +66,9 @@ void checkFlame() {
     Serial.println("FLAME DETECTED");
     digitalWrite(led_pin, HIGH);     // Turn on the LED
     playMelody();                    // Play melody on the buzzer
-    sendSMS("+917302562363", "FIRE ALERT!"); // Send SMS
+    String location = getLocation();
+    String message = "FIRE ALERT! LOCATION: " + location; 
+    sendSMS("+917302562363", message); // Send SMS with location
   } else {
     Serial.println("No flame detected");
     digitalWrite(led_pin, LOW);      // Turn off the LED
@@ -74,4 +86,15 @@ void playMelody() {
   delay(200);
   tone(buzzerPin, 523, 200);   // C5
   delay(200);
-} 
+}
+
+String getLocation() {
+  if (gps.location.isUpdated()) {
+    double lat = gps.location.lat();    // Get latitude
+    double lng = gps.location.lng();    // Get longitude
+    String location = "Lat: " + String(lat, 6) + ", Lng: " + String(lng, 6);
+    return location;
+  } else {
+    return "INVALID"; // Return "Invalid" if location is not available
+  }
+}
